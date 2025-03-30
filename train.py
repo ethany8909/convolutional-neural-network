@@ -1,3 +1,4 @@
+#import all modules
 import tensorflow as tf
 from keras.src.utils import image_dataset_from_directory
 from tensorflow.keras import layers, models
@@ -9,7 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix, classification_report
 
-
+#Set image/batch sizes
 img_height =128
 img_width = 128
 batch_size =32
@@ -24,6 +25,7 @@ data_augmentation = keras.Sequential(
     layers.RandomZoom(0.1),
   ]
 )
+
 
 # Define a simple CNN model
 def build_eczema_cnn(input_shape=(128, 128, 3)):
@@ -58,7 +60,7 @@ model = build_eczema_cnn()
 model.summary()
 
 # Load training and validation data
-train_dir = 'dataset/train_data_4'
+train_dir = 'dataset/train_data'
 
 train_ds = tf.keras.utils.image_dataset_from_directory(
   train_dir,
@@ -98,7 +100,7 @@ val_ds = val_ds.cache().prefetch(buffer_size=AUTOTUNE)
 history = model.fit(
     train_ds,
     validation_data=val_ds,
-    epochs=15,
+    epochs=1,
     steps_per_epoch=len(train_ds),
     validation_steps=len(val_ds)
 )
@@ -115,10 +117,56 @@ cm = confusion_matrix(y_true, y_pred)
 
 # Plot confusion matrix
 plt.figure(figsize=(5, 4))
-sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=["Normal", "Eczema"], yticklabels=["Normal", "Eczema"])
+sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=["Eczema", "Normal"], yticklabels=["Eczema", "Normal"])
 plt.xlabel("Predicted Label")
 plt.ylabel("True Label")
 plt.title("Confusion Matrix - Validation Data")
+
+
+def visualize_multiple_feature_maps(model, img_array, layer_names):
+    """
+    Extracts and visualizes feature maps from multiple convolutional layers.
+
+    :param model: Trained Keras model
+    :param img_array: Single input image array (preprocessed)
+    :param layer_names: List of convolutional layer names to visualize
+    """
+    img_tensor = np.expand_dims(img_array, axis=0)  # Add batch dimension
+    img_tensor = img_tensor / 255.0  # Normalize image
+
+    # Use first actual input layer instead of model.input
+    input_layer = model.layers[0].input
+
+    for layer_name in layer_names:
+        try:
+            layer_output = model.get_layer(layer_name).output
+            activation_model = tf.keras.models.Model(inputs=input_layer, outputs=layer_output)
+
+            # Generate feature maps
+            feature_maps = activation_model.predict(img_tensor)
+
+            # Plot feature maps
+            num_filters = feature_maps.shape[-1]
+            cols = 8
+            rows = (num_filters // cols) + 1
+
+            plt.figure(figsize=(15, rows * 2))
+            for i in range(num_filters):
+                plt.subplot(rows, cols, i + 1)
+                plt.imshow(feature_maps[0, :, :, i], cmap="viridis")
+                plt.axis("off")
+
+            plt.suptitle(f"Feature Maps from Layer: {layer_name}")
+            plt.tight_layout()
+            plt.show()
+
+        except ValueError:
+            print(f"Layer '{layer_name}' not found. Available layers:")
+            for layer in model.layers:
+                print(layer.name)
+            continue  # Skip to the next layer
+
+
 
 
 # Evaluate model on the test dataset
@@ -170,3 +218,12 @@ if show == 'y':
 else:
     pass
 
+# Select an image from the test dataset
+for img_batch, label_batch in test_ds.take(1):
+    img_array = img_batch[0].numpy()
+
+    # Get all convolutional layers dynamically
+    conv_layers = [layer.name for layer in model.layers if isinstance(layer, layers.Conv2D)]
+
+    # Visualize feature maps from multiple layers
+    visualize_multiple_feature_maps(model, img_array, conv_layers)
